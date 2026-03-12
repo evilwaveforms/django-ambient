@@ -1,0 +1,12 @@
+{% if frames %}
+  <ol class="ambient-stack-frames">
+    {% for frame in frames %}
+      <li>
+        <div>{{ frame.filename }}:{{ frame.lineno }} in {{ frame.func }}</div>
+        <pre>{{ frame.line }}</pre>
+      </li>
+    {% endfor %}
+  </ol>
+{% else %}
+  <p>No stack trace available.</p>
+{% endif %}

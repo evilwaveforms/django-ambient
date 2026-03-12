@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Django Ambient - Request {{ request_id }}</title>
+    <style>
+      .ambient-queries li {
+        padding: 0.2rem;
+      }
+      .ambient-queries li:hover {
+        background: #C0FE03;
+      }
+      .ambient-queries .ambient-stack summary {
+        cursor: pointer;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>Request {{ request_id }}</h1>
+        <p>Method: {{ method }}</p>
+        <p>Status: {{ status }}</p>
+        <p>Path: {{ path }}</p>
+        <p>Started: {{ started_at }}</p>
+        <p><a href="{% url 'ambient-index' %}">Back to dashboard</a></p>
+      </header>
+
+      {% if queries %}
+        <section>
+          <h2>Queries</h2>
+          <ol class="ambient-queries">
+            {% for item in queries %}
+              <li>
+                <div><strong>{{ item.duration_ms|floatformat:2 }} ms</strong></div>
+                <pre>{{ item.sql }}</pre>
+                {% if item.duplicates > 1 %}
+                  <pre>{{ item.duplicates }} duplicate queries.</pre>
+                {% endif %}
+                {% if item.has_trace %}
+                  <details class="ambient-stack" data-stack-url="{% url 'ambient-query-stack' request_id item.index %}">
+                    <summary>Stack trace</summary>
+                    <div class="ambient-stack-body">Hover or click to load.</div>
+                  </details>
+                {% endif %}
+              </li>
+            {% endfor %}
+          </ol>
+        </section>
+      {% else %}
+        <p>No queries recorded for this request.</p>
+      {% endif %}
+    </main>
+    <script>
+      (function () {
+        const hoverDelayMs = 250;
+        const stacks = document.querySelectorAll(".ambient-stack");
+
+        function loadStack(details) {
+          if (details.dataset.loaded === "1" || details.dataset.loading === "1") {
+            return;
+          }
+          const url = details.getAttribute("data-stack-url");
+          if (!url) {
+            return;
+          }
+          details.dataset.loading = "1";
+          const body = details.querySelector(".ambient-stack-body");
+          if (body) {
+            body.textContent = "Loading...";
+          }
+          fetch(url).then((resp) => {
+            if (!resp.ok) {
+              throw new Error("Failed to load stack trace");
+            }
+            return resp.text();
+          }).then((html) => {
+            if (body) {
+              body.innerHTML = html;
+            }
+            details.dataset.loaded = "1";
+            details.dataset.loading = "0";
+          })
+        }
+        stacks.forEach((details) => {
+          let timer = null;
+          details.addEventListener("mouseenter", () => {
+            if (timer) {
+              clearTimeout(timer);
+            }
+            timer = setTimeout(() => loadStack(details), hoverDelayMs);
+          });
+          details.addEventListener("mouseleave", () => {
+            if (timer) {
+              clearTimeout(timer);
+              timer = null;
+            }
+          });
+          details.addEventListener("click", () => loadStack(details));
+        });
+      })();
+    </script>
+  </body>
+</html>

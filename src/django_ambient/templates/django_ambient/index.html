@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Django Ambient</title>
+    <style>
+      #ambient-requests tbody tr[data-href] {
+        cursor: pointer;
+      }
+      #ambient-requests tbody tr[data-href]:hover {
+        background: #C0FE03;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>DJANGO AMBIENT</h1>
+        <p>Recent requests captured by the profiler.</p>
+      </header>
+
+      <section>
+        <h2>Requests</h2>
+        <table id="ambient-requests" data-events-url="{% url 'ambient-events' %}" data-max-requests="{{ max_requests }}">
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>Method</th>
+              <th>Path</th>
+              <th>Status</th>
+              <th>Queries</th>
+              <th>Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for request_id, path, method, status, query_count, total_ms, started_at in requests %}
+              <tr data-href="{% url 'ambient-request-detail' request_id=request_id %}">
+                <td>{{ started_at }}</td>
+                <td>{{ method }}</td>
+                <td>{{ path }}</td>
+                <td>{{ status }}</td>
+                <td>{{ query_count }}</td>
+                <td>{{ total_ms|floatformat:2 }} ms</td>
+              </tr>
+            {% empty %}
+              <tr>
+                <td colspan="6">No requests captured yet.</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </section>
+    </main>
+    <script>
+      (function () {
+        var table = document.getElementById("ambient-requests");
+        if (!table || !window.EventSource) return;
+
+        var eventsUrl = table.getAttribute("data-events-url");
+        if (!eventsUrl) return;
+        var tbody = table.querySelector("tbody");
+        if (!tbody) return;
+
+        function renderRequests(items) {
+          if (!Array.isArray(items)) return;
+          var maxRequests = Number(table.getAttribute("data-max-requests")) || items.length;
+          if (items.length > maxRequests) {
+            items = items.slice(0, maxRequests);
+          }
+          tbody.innerHTML = "";
+          if (items.length === 0) {
+            var emptyRow = document.createElement("tr");
+            var emptyCell = document.createElement("td");
+            emptyCell.colSpan = 6;
+            emptyCell.textContent = "No requests captured yet.";
+            emptyRow.appendChild(emptyCell);
+            tbody.appendChild(emptyRow);
+            return;
+          }
+
+          items.forEach(function (item) {
+            var row = document.createElement("tr");
+            row.setAttribute("data-href", "./requests/" + item.id + "/");
+
+            var timeCell = document.createElement("td");
+            timeCell.textContent = item.started_at;
+            row.appendChild(timeCell);
+
+            var methodCell = document.createElement("td");
+            methodCell.textContent = item.method;
+            row.appendChild(methodCell);
+
+            var pathCell = document.createElement("td");
+            pathCell.textContent = item.path;
+            row.appendChild(pathCell);
+
+            var statusCell = document.createElement("td");
+            statusCell.textContent = String(item.status);
+            row.appendChild(statusCell);
+
+            var queryCell = document.createElement("td");
+            queryCell.textContent = String(item.query_count);
+            row.appendChild(queryCell);
+
+            var totalCell = document.createElement("td");
+            totalCell.textContent = Number(item.total_ms).toFixed(2) + " ms";
+            row.appendChild(totalCell);
+
+            tbody.appendChild(row);
+          });
+        }
+
+        function handleRowClick(event) {
+          var row = event.target.closest("tr");
+          if (!row) return;
+          var href = row.getAttribute("data-href");
+          if (href) {
+            window.location.href = href;
+          }
+        }
+
+        tbody.addEventListener("click", handleRowClick);
+
+        var source = new EventSource(eventsUrl);
+        source.onmessage = function (event) {
+          try {
+            var data = JSON.parse(event.data);
+            renderRequests(data);
+          } catch (err) {
+            // Ignore malformed payloads.
+          }
+        };
+      })();
+    </script>
+  </body>
+</html>

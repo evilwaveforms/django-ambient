@@ -1,0 +1,24 @@
+[project]
+name = "django-ambient"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "evilwaveforms", email = "8681846+evilwaveforms@users.noreply.github.com" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "django>=6.0.3",
+]
+
+[tool.maturin]
+module-name = "django_ambient._core"
+python-packages = ["django_ambient"]
+python-source = "src"
+
+[tool.uv]
+cache-keys = [{ file = "pyproject.toml" }, { file = "src/**/*.rs" }, { file = "Cargo.toml" }, { file = "Cargo.lock" }]
+
+[build-system]
+requires = ["maturin>=1.0,<2.0"]
+build-backend = "maturin"
