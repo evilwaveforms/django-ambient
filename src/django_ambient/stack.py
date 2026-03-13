@@ -6,9 +6,9 @@ EXCLUDED_MODULE_PREFIXES = (
     "django.db",
 )
 
-_stack_traces: dict[int, list[list[tuple[str, int, str, str | None]]]] = {}
+_stack_traces: dict[int, list[list[tuple[str, int, str]]]] = {}
 
-def store_stack_trace(request_id: int, frames: list[tuple[str, int, str, str | None]]) -> None:
+def store_stack_trace(request_id: int, frames: list[tuple[str, int, str]]) -> None:
     items = _stack_traces.setdefault(request_id, [])
     items.append(frames)
 
@@ -30,14 +30,12 @@ def capture_stack_frames(skip: int = 0, max_frames: int | None = None):
         filename = code.co_filename
         lineno = frame.f_lineno
         func = code.co_name
-        module = inspect.getmodule(frame)
-        module_name = module.__name__ if module is not None else None
-        result.append((filename, lineno, func, module_name))
+        result.append((filename, lineno, func))
         frame = frame.f_back
         depth += 1
     return result
 
-def get_stack_traces(request_id: int) -> list[list[tuple[str, int, str, str | None]]]:
+def get_stack_traces(request_id: int) -> list[list[tuple[str, int, str]]]:
     return list(_stack_traces.get(request_id, ()))
 
 def render_stack_traces(request_id: int, max_frames: int = 5) -> list[list[dict[str, object]]]:
@@ -47,7 +45,7 @@ def render_stack_traces(request_id: int, max_frames: int = 5) -> list[list[dict[
 def get_stack_trace(
     request_id: int,
     index: int,
-) -> list[tuple[str, int, str, str | None]] | None:
+) -> list[tuple[str, int, str]] | None:
     traces = _stack_traces.get(request_id)
     if traces is None:
         return None
@@ -56,12 +54,12 @@ def get_stack_trace(
     return traces[index]
 
 def render_stack_trace(
-    frames: list[tuple[str, int, str, str | None]],
+    frames: list[tuple[str, int, str]],
     max_frames: int = 5,
 ) -> list[dict[str, object]]:
     selected = _select_relevant_frames(frames, max_frames=max_frames)
     rendered: list[dict[str, object]] = []
-    for filename, lineno, func, _module_name in selected:
+    for filename, lineno, func in selected:
         line = linecache.getline(filename, lineno).rstrip("\n")
         rendered.append(
             {
@@ -74,24 +72,25 @@ def render_stack_trace(
     return rendered
 
 def _select_relevant_frames(
-    frames: list[tuple[str, int, str, str | None]],
+    frames: list[tuple[str, int, str]],
     max_frames: int,
-) -> list[tuple[str, int, str, str | None]]:
+) -> list[tuple[str, int, str]]:
     if not frames:
         return []
     start = 0
-    for idx, (filename, _, _, module_name) in enumerate(frames):
-        if _is_user_frame(filename, module_name):
+    for idx, (filename, _, _) in enumerate(frames):
+        if _is_user_frame(filename):
             start = idx
             break
     return frames[start:start + max_frames]
 
-def _is_user_frame(file_name: str, module_name: str | None) -> bool:
-    if module_name:
-        for prefix in EXCLUDED_MODULE_PREFIXES:
-            if module_name.startswith(prefix):
-                return False
+def _is_user_frame(file_name: str) -> bool:
     file_name = file_name.replace("\\", "/")
+    if "/site-packages/" in file_name:
+        return False
+    for prefix in EXCLUDED_MODULE_PREFIXES:
+        if f"/{prefix.replace('.', '/')}/" in file_name:
+            return False
     if "/lib/python" in file_name:
         return False
     return os.path.isabs(file_name)
