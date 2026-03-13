@@ -4,6 +4,8 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Django Ambient - Request {{ request_id }}</title>
+    {% load static %}
+    <link rel="stylesheet" href="{% static 'django_ambient/base.css' %}">
     <style>
       .ambient-queries li {
         padding: 0.2rem;
@@ -53,15 +55,15 @@
       {% endif %}
     </main>
     <script>
-      (function () {
-        const hoverDelayMs = 250;
+      (() => {
+        const hoverDelayMs = 100;
         const stacks = document.querySelectorAll(".ambient-stack");
 
-        function loadStack(details) {
+        function loadStackTrace(details) {
           if (details.dataset.loaded === "1" || details.dataset.loading === "1") {
             return;
           }
-          const url = details.getAttribute("data-stack-url");
+          const url = details.dataset.stackUrl;
           if (!url) {
             return;
           }
@@ -70,34 +72,41 @@
           if (body) {
             body.textContent = "Loading...";
           }
-          fetch(url).then((resp) => {
-            if (!resp.ok) {
-              throw new Error("Failed to load stack trace");
-            }
-            return resp.text();
-          }).then((html) => {
-            if (body) {
-              body.innerHTML = html;
-            }
-            details.dataset.loaded = "1";
-            details.dataset.loading = "0";
-          })
+          fetch(url)
+            .then((resp) => {
+              if (!resp.ok) {
+                throw new Error("Failed to load stack trace");
+              }
+              return resp.text();
+            })
+            .then((html) => {
+              if (body) {
+                body.innerHTML = html;
+              }
+              details.dataset.loaded = "1";
+            })
+            .finally(() => {
+              details.dataset.loading = "0";
+            });
         }
         stacks.forEach((details) => {
           let timer = null;
-          details.addEventListener("mouseenter", () => {
+          const scheduleLoad = () => {
             if (timer) {
               clearTimeout(timer);
             }
-            timer = setTimeout(() => loadStack(details), hoverDelayMs);
-          });
-          details.addEventListener("mouseleave", () => {
-            if (timer) {
-              clearTimeout(timer);
-              timer = null;
+            timer = setTimeout(() => loadStackTrace(details), hoverDelayMs);
+          };
+          const cancelLoad = () => {
+            if (!timer) {
+              return;
             }
-          });
-          details.addEventListener("click", () => loadStack(details));
+            clearTimeout(timer);
+            timer = null;
+          };
+          details.addEventListener("mouseenter", scheduleLoad);
+          details.addEventListener("mouseleave", cancelLoad);
+          details.addEventListener("click", () => loadStackTrace(details));
         });
       })();
     </script>

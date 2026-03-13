@@ -4,6 +4,8 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Django Ambient</title>
+    {% load static %}
+    <link rel="stylesheet" href="{% static 'django_ambient/base.css' %}">
     <style>
       #ambient-requests tbody tr[data-href] {
         cursor: pointer;
@@ -53,83 +55,117 @@
       </section>
     </main>
     <script>
-      (function () {
-        var table = document.getElementById("ambient-requests");
+      (() => {
+        const table = document.getElementById("ambient-requests");
         if (!table || !window.EventSource) return;
 
-        var eventsUrl = table.getAttribute("data-events-url");
+        const eventsUrl = table.dataset.eventsUrl;
         if (!eventsUrl) return;
-        var tbody = table.querySelector("tbody");
+        const tbody = table.querySelector("tbody");
         if (!tbody) return;
 
-        function renderRequests(items) {
-          if (!Array.isArray(items)) return;
-          var maxRequests = Number(table.getAttribute("data-max-requests")) || items.length;
-          if (items.length > maxRequests) {
-            items = items.slice(0, maxRequests);
-          }
-          tbody.innerHTML = "";
-          if (items.length === 0) {
-            var emptyRow = document.createElement("tr");
-            var emptyCell = document.createElement("td");
-            emptyCell.colSpan = 6;
-            emptyCell.textContent = "No requests captured yet.";
-            emptyRow.appendChild(emptyCell);
-            tbody.appendChild(emptyRow);
+        const cell = (text) => {
+          const td = document.createElement("td");
+          td.textContent = text;
+          return td;
+        };
+
+        const emptyRow = () => {
+          const row = document.createElement("tr");
+          row.dataset.empty = "1";
+          const td = document.createElement("td");
+          td.colSpan = 6;
+          td.textContent = "No requests captured yet.";
+          row.appendChild(td);
+          return row;
+        };
+
+        const buildRow = (item) => {
+          const row = document.createElement("tr");
+          row.dataset.id = String(item.id);
+          row.dataset.href = `./requests/${item.id}/`;
+          row.appendChild(cell(item.started_at));
+          row.appendChild(cell(item.method));
+          row.appendChild(cell(item.path));
+          row.appendChild(cell(String(item.status)));
+          row.appendChild(cell(String(item.query_count)));
+          row.appendChild(cell(`${Number(item.total_ms).toFixed(2)} ms`));
+          return row;
+        };
+
+        const maxRequests = Number(table.dataset.maxRequests) || Infinity;
+
+        const renderRequests = (items) => {
+          const list = Array.isArray(items) ? items : [];
+          const shown = Number.isFinite(maxRequests) ? list.slice(0, maxRequests) : list;
+
+          tbody.textContent = "";
+          if (shown.length === 0) {
+            tbody.appendChild(emptyRow());
             return;
           }
 
-          items.forEach(function (item) {
-            var row = document.createElement("tr");
-            row.setAttribute("data-href", "./requests/" + item.id + "/");
+          shown.forEach((item) => tbody.appendChild(buildRow(item)));
+        };
 
-            var timeCell = document.createElement("td");
-            timeCell.textContent = item.started_at;
-            row.appendChild(timeCell);
-
-            var methodCell = document.createElement("td");
-            methodCell.textContent = item.method;
-            row.appendChild(methodCell);
-
-            var pathCell = document.createElement("td");
-            pathCell.textContent = item.path;
-            row.appendChild(pathCell);
-
-            var statusCell = document.createElement("td");
-            statusCell.textContent = String(item.status);
-            row.appendChild(statusCell);
-
-            var queryCell = document.createElement("td");
-            queryCell.textContent = String(item.query_count);
-            row.appendChild(queryCell);
-
-            var totalCell = document.createElement("td");
-            totalCell.textContent = Number(item.total_ms).toFixed(2) + " ms";
-            row.appendChild(totalCell);
-
-            tbody.appendChild(row);
+        const appendRequests = (items) => {
+          const list = Array.isArray(items) ? items : [];
+          if (list.length === 0) {
+            return;
+          }
+          const firstRow = tbody.firstElementChild;
+          if (firstRow && firstRow.dataset.empty === "1") {
+            tbody.textContent = "";
+          }
+          const frag = document.createDocumentFragment();
+          list.forEach((item) => {
+            if (tbody.querySelector(`tr[data-id="${item.id}"]`)) {
+              return;
+            }
+            frag.appendChild(buildRow(item));
           });
-        }
-
-        function handleRowClick(event) {
-          var row = event.target.closest("tr");
-          if (!row) return;
-          var href = row.getAttribute("data-href");
-          if (href) {
-            window.location.href = href;
+          if (tbody.firstChild) {
+            tbody.insertBefore(frag, tbody.firstChild);
+          } else {
+            tbody.appendChild(frag);
           }
-        }
+        };
 
-        tbody.addEventListener("click", handleRowClick);
-
-        var source = new EventSource(eventsUrl);
-        source.onmessage = function (event) {
-          try {
-            var data = JSON.parse(event.data);
-            renderRequests(data);
-          } catch (err) {
-            // Ignore malformed payloads.
+        const removeRequests = (ids) => {
+          const list = Array.isArray(ids) ? ids : [];
+          if (list.length === 0) {
+            return;
           }
+          list.forEach((id) => {
+            const row = tbody.querySelector(`tr[data-id="${id}"]`);
+            if (row) {
+              row.remove();
+            }
+          });
+          if (!tbody.firstElementChild) {
+            tbody.appendChild(emptyRow());
+          }
+        };
+
+        tbody.addEventListener("click", (event) => {
+          const row = event.target.closest("tr[data-href]");
+          if (row) {
+            window.location.href = row.dataset.href;
+          }
+        });
+
+        const source = new EventSource(eventsUrl);
+        source.addEventListener("snapshot", (event) => {
+          renderRequests(JSON.parse(event.data));
+        });
+        source.addEventListener("append", (event) => {
+          appendRequests(JSON.parse(event.data));
+        });
+        source.addEventListener("remove", (event) => {
+          removeRequests(JSON.parse(event.data));
+        });
+        source.onmessage = (event) => {
+          renderRequests(JSON.parse(event.data));
         };
       })();
     </script>

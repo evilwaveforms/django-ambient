@@ -14,7 +14,10 @@ def index(request):
     return render(
         request,
         "django_ambient/index.html",
-        {"requests": requests, "max_requests": max_requests},
+        {
+            "requests": requests,
+            "max_requests": max_requests,
+        },
     )
 
 
@@ -63,29 +66,50 @@ def query_stack_trace(request, request_id: int, query_index: int):
     )
 
 
+def _serialize_requests(
+    items: list[tuple[int, str, str, int, int, float, str]],
+) -> list[dict[str, object]]:
+    return [
+        {
+            "id": req_id,
+            "path": path,
+            "method": method,
+            "status": status,
+            "query_count": query_count,
+            "total_ms": total_ms,
+            "started_at": started_at,
+        }
+        for req_id, path, method, status, query_count, total_ms, started_at in items
+    ]
+
+
 def events(request):
     def event_stream():
-        last_payload = None
+        last_ids: set[int] | None = None
         while True:
             requests = _format_requests(_core.list_requests())
-            payload = json.dumps(
-                [
-                    {
-                        "id": req_id,
-                        "path": path,
-                        "method": method,
-                        "status": status,
-                        "query_count": query_count,
-                        "total_ms": total_ms,
-                        "started_at": started_at,
-                    }
-                    for req_id, path, method, status, query_count, total_ms, started_at in requests
-                ]
-            )
+            current_ids = {req_id for req_id, *_ in requests}
 
-            if payload != last_payload:
-                yield f"data: {payload}\n\n"
-                last_payload = payload
+            if last_ids is None:
+                payload = json.dumps(_serialize_requests(requests))
+                yield f"event: snapshot\ndata: {payload}\n\n"
+                last_ids = current_ids
+                time.sleep(1)
+                continue
+            if current_ids == last_ids:
+                time.sleep(1)
+                continue
+
+            added_ids = current_ids - last_ids
+            removed_ids = last_ids - current_ids
+            if added_ids:
+                new_requests = [req for req in requests if req[0] in added_ids]
+                payload = json.dumps(_serialize_requests(new_requests))
+                yield f"event: append\ndata: {payload}\n\n"
+            if removed_ids:
+                payload = json.dumps(sorted(removed_ids))
+                yield f"event: remove\ndata: {payload}\n\n"
+            last_ids = current_ids
             time.sleep(1)
     response = StreamingHttpResponse(event_stream(), content_type="text/event-stream")
     response["Cache-Control"] = "no-cache"
