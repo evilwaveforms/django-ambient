@@ -11,14 +11,8 @@ dependencies = [
     "django>=6.0.3",
 ]
 
-[tool.setuptools]
-package-dir = {"" = "src"}
-
 [tool.setuptools.packages.find]
-where = ["src"]
-
-[tool.uv]
-cache-keys = [{ file = "pyproject.toml" }, { file = "src/**/*.py" }]
+include = ["django_ambient*"]
 
 [build-system]
 requires = ["setuptools>=68"]
