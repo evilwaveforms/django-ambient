@@ -54,7 +54,7 @@ def render_stack_trace(
     frames: list[tuple[str, int, str]],
     max_frames: int = 5,
 ) -> list[dict[str, object]]:
-    selected = _select_relevant_frames(frames, max_frames=max_frames)
+    selected = list(reversed(_select_relevant_frames(frames, max_frames=max_frames)))
     rendered: list[dict[str, object]] = []
     for filename, lineno, func in selected:
         line = linecache.getline(filename, lineno).rstrip("\n")
