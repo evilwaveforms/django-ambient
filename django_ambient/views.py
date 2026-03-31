@@ -23,45 +23,6 @@ def index(request):
         },
     )
 
-
-def _normalize_request_detail(
-    data: tuple,
-) -> tuple[str, str, int, list, float, float, float, float, int, int, float]:
-    if len(data) == 5:
-        path, method, status, queries, started_at = data
-        return path, method, status, queries, started_at, 0.0, 0.0, 0.0, 0, 0, 0.0
-    if len(data) == 7:
-        path, method, status, queries, started_at, duration_ms, cpu_ms = data
-        return path, method, status, queries, started_at, duration_ms, cpu_ms, 0.0, 0, 0, 0.0
-    if len(data) == 9:
-        (
-            path,
-            method,
-            status,
-            queries,
-            started_at,
-            duration_ms,
-            cpu_ms,
-            template_ms,
-            cache_stats,
-        ) = data
-        cache_hits, cache_misses, cache_ms = cache_stats
-        return (
-            path,
-            method,
-            status,
-            queries,
-            started_at,
-            duration_ms,
-            cpu_ms,
-            template_ms,
-            cache_hits,
-            cache_misses,
-            cache_ms,
-        )
-    raise ValueError(f"Unexpected request detail tuple length: {len(data)}")
-
-
 def request_detail(request, request_id: int):
     data = _store.get_request(request_id)
     if data is None:
@@ -75,10 +36,9 @@ def request_detail(request, request_id: int):
         duration_ms,
         cpu_ms,
         template_ms,
-        cache_hits,
-        cache_misses,
-        cache_ms,
-    ) = _normalize_request_detail(data)
+        cache_stats,
+    ) = data
+    cache_hits, cache_misses, cache_ms = cache_stats
     cache_calls = _format_cache_calls(get_cache_calls(request_id))
     trace_count = len(get_stack_traces(request_id))
     queries_with_traces = []
@@ -176,10 +136,8 @@ def _serialize_requests(
             duration_ms,
             cpu_ms,
             template_ms,
-            cache_hits,
-            cache_misses,
-            cache_ms,
-        ) in _normalize_requests(items)
+            (cache_hits, cache_misses, cache_ms),
+        ) in items
     ]
 
 
@@ -243,90 +201,9 @@ def _format_requests(
             duration_ms,
             cpu_ms,
             template_ms,
-            cache_hits,
-            cache_misses,
-            cache_ms,
-        ) in _normalize_requests(items)
+            (cache_hits, cache_misses, cache_ms),
+        ) in items
     ]
-
-
-def _normalize_requests(
-    items: list[tuple],
-) -> list[tuple[int, str, str, int, int, float, float, float, float, float, int, int, float]]:
-    return [
-        _normalize_request_tuple(item)
-        for item in items
-    ]
-
-
-def _normalize_request_tuple(
-    item: tuple,
-) -> tuple[int, str, str, int, int, float, float, float, float, float, int, int, float]:
-    if len(item) == 7:
-        req_id, path, method, status, query_count, total_ms, started_at = item
-        return (
-            req_id,
-            path,
-            method,
-            status,
-            query_count,
-            total_ms,
-            started_at,
-            0.0,
-            0.0,
-            0.0,
-            0,
-            0,
-            0.0,
-        )
-    if len(item) == 9:
-        req_id, path, method, status, query_count, total_ms, started_at, duration_ms, cpu_ms = item
-        return (
-            req_id,
-            path,
-            method,
-            status,
-            query_count,
-            total_ms,
-            started_at,
-            duration_ms,
-            cpu_ms,
-            0.0,
-            0,
-            0,
-            0.0,
-        )
-    if len(item) == 11:
-        (
-            req_id,
-            path,
-            method,
-            status,
-            query_count,
-            total_ms,
-            started_at,
-            duration_ms,
-            cpu_ms,
-            template_ms,
-            cache_stats,
-        ) = item
-        cache_hits, cache_misses, cache_ms = cache_stats
-        return (
-            req_id,
-            path,
-            method,
-            status,
-            query_count,
-            total_ms,
-            started_at,
-            duration_ms,
-            cpu_ms,
-            template_ms,
-            cache_hits,
-            cache_misses,
-            cache_ms,
-        )
-    raise ValueError(f"Unexpected request tuple length: {len(item)}")
 
 
 def _format_cache_calls(
