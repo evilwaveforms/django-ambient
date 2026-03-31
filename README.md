@@ -1,6 +1,6 @@
 # django-ambient
 
-Django development profiling middleware that captures per-request SQL, cache, template, CPU, and
+Very much incomplete Django development profiling middleware that captures per-request SQL, cache, template, CPU, and
 timing data, with an in-memory UI for inspecting recent requests.
 
 ## Install
