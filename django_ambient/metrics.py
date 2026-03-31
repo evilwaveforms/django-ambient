@@ -2,6 +2,8 @@ import contextvars
 import time
 
 from django_ambient.stack import capture_stack_frames
+from django.template.base import Template
+
 
 _cache_stats_var = contextvars.ContextVar("ambient_cache_stats", default=None)
 _cache_calls_var = contextvars.ContextVar("ambient_cache_calls", default=None)
@@ -148,11 +150,11 @@ def install_cache_hooks() -> None:
 
 
 def install_template_hooks() -> None:
+    # TODO: This is not very useful right now. It would probably be better to
+    # have more granular statistics. i.e. breakdown of time per template.
     global _TEMPLATE_PATCHED
     if _TEMPLATE_PATCHED:
         return
-
-    from django.template.base import Template
 
     if getattr(Template, "_ambient_template_wrapped", False):
         _TEMPLATE_PATCHED = True
