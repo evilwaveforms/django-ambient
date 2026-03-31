@@ -27,55 +27,52 @@
       }
     </style>
   </head>
-  <body>
+  <body class="ambient-page-wide">
     <main>
-      <header>
-        <h1>DJANGO AMBIENT</h1>
-        <p>Recent requests captured by the profiler.</p>
-      </header>
-
       <section>
         <h2>Requests</h2>
-        <table id="ambient-requests" data-events-url="{% url 'ambient-events' %}" data-max-requests="{{ max_requests }}" data-last-id="{{ last_request_id }}">
-          <thead>
-            <tr>
-              <th>Time</th>
-              <th>Method</th>
-              <th>Path</th>
-              <th>Status</th>
-              <th>Queries</th>
-              <th>Query Total</th>
-              <th>Request</th>
-              <th>CPU</th>
-              <th>Template</th>
-              <th>Cache</th>
-              <th>Cache Hits</th>
-              <th>Cache Misses</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for request_id, path, method, status, query_count, total_ms, started_at, duration_ms, cpu_ms, template_ms, cache_hits, cache_misses, cache_ms in requests %}
-              <tr data-href="{% url 'ambient-request-detail' request_id=request_id %}" data-id="{{ request_id }}">
-                <td>{{ started_at }}</td>
-                <td>{{ method }}</td>
-                <td>{{ path }}</td>
-                <td>{{ status }}</td>
-                <td>{{ query_count }}</td>
-                <td>{{ total_ms|floatformat:2 }} ms</td>
-                <td>{{ duration_ms|floatformat:2 }} ms</td>
-                <td>{{ cpu_ms|floatformat:2 }} ms</td>
-                <td>{{ template_ms|floatformat:2 }} ms</td>
-                <td>{{ cache_ms|floatformat:2 }} ms</td>
-                <td>{{ cache_hits }}</td>
-                <td>{{ cache_misses }}</td>
-              </tr>
-            {% empty %}
+        <div class="ambient-table-wrap">
+          <table id="ambient-requests" data-events-url="{% url 'ambient-events' %}" data-max-requests="{{ max_requests }}" data-last-id="{{ last_request_id }}">
+            <thead>
               <tr>
-                <td colspan="12">No requests captured yet.</td>
+                <th>Time</th>
+                <th>Method</th>
+                <th>Path</th>
+                <th>Status</th>
+                <th>Queries</th>
+                <th>Query Total</th>
+                <th>Request</th>
+                <th>CPU</th>
+                <th>Template</th>
+                <th>Cache</th>
+                <th>Cache Hits</th>
+                <th>Cache Misses</th>
               </tr>
-            {% endfor %}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {% for request_id, path, method, status, query_count, total_ms, started_at, duration_ms, cpu_ms, template_ms, cache_hits, cache_misses, cache_ms in requests %}
+                <tr data-href="{% url 'ambient-request-detail' request_id=request_id %}" data-id="{{ request_id }}">
+                  <td>{{ started_at }}</td>
+                  <td>{{ method }}</td>
+                  <td>{{ path }}</td>
+                  <td>{{ status }}</td>
+                  <td>{{ query_count }}</td>
+                  <td>{{ total_ms|floatformat:2 }} ms</td>
+                  <td>{{ duration_ms|floatformat:2 }} ms</td>
+                  <td>{{ cpu_ms|floatformat:2 }} ms</td>
+                  <td>{{ template_ms|floatformat:2 }} ms</td>
+                  <td>{{ cache_ms|floatformat:2 }} ms</td>
+                  <td>{{ cache_hits }}</td>
+                  <td>{{ cache_misses }}</td>
+                </tr>
+              {% empty %}
+                <tr>
+                  <td colspan="12">No requests captured yet.</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
       </section>
     </main>
     <script>
