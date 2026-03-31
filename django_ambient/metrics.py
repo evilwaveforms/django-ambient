@@ -1,6 +1,8 @@
 import contextvars
 import time
 
+from django_ambient.stack import capture_stack_frames
+
 _cache_stats_var = contextvars.ContextVar("ambient_cache_stats", default=None)
 _cache_calls_var = contextvars.ContextVar("ambient_cache_calls", default=None)
 _cache_depth = contextvars.ContextVar("ambient_cache_depth", default=0)
@@ -69,7 +71,8 @@ def install_cache_hooks() -> None:
             if misses:
                 stats["misses"] += misses
         if calls is not None:
-            calls.append((op, backend, key, hits, misses, elapsed_ms))
+            frames = capture_stack_frames(skip=2, max_frames=30)
+            calls.append((op, backend, key, hits, misses, elapsed_ms, frames))
 
     def get(self, key, default=None, version=None):
         stats = _cache_stats_var.get()

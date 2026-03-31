@@ -5,6 +5,7 @@ import os
 
 EXCLUDED_MODULE_PREFIXES = (
     "django.db",
+    "django_ambient",
 )
 
 _stack_traces: dict[int, list[list[tuple[str, int, str]]]] = {}

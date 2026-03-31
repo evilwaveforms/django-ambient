@@ -128,6 +128,24 @@ def query_stack_trace(request, request_id: int, query_index: int):
     )
 
 
+def cache_call_stack_trace(request, request_id: int, call_index: int):
+    data = _store.get_request(request_id)
+    if not data:
+        raise Http404("Request not found")
+    cache_calls = get_cache_calls(request_id)
+    if call_index < 0 or call_index >= len(cache_calls):
+        raise Http404("Cache call not found")
+    frames = cache_calls[call_index][6]
+    if not frames:
+        raise Http404("Stack trace not found")
+    rendered = render_stack_trace(frames)
+    return render(
+        request,
+        "django_ambient/stack_trace.html",
+        {"frames": rendered},
+    )
+
+
 def _serialize_requests(
     items: list[tuple],
 ) -> list[dict[str, object]]:
@@ -312,18 +330,20 @@ def _normalize_request_tuple(
 
 
 def _format_cache_calls(
-    calls: list[tuple[str, str, object, int | None, int | None, float]],
+    calls: list[tuple[str, str, object, int | None, int | None, float, list[tuple[str, int, str]]]],
 ) -> list[dict[str, object]]:
     formatted = []
-    for op, backend, key, hits, misses, duration_ms in calls:
+    for index, (op, backend, key, hits, misses, duration_ms, frames) in enumerate(calls):
         formatted.append(
             {
+                "index": index,
                 "op": op,
                 "backend": backend,
                 "key": _format_cache_key(key),
                 "hits": hits,
                 "misses": misses,
                 "duration_ms": duration_ms,
+                "has_trace": bool(frames),
             }
         )
     return formatted

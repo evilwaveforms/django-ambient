@@ -7,13 +7,16 @@
     {% load static %}
     <link rel="stylesheet" href="{% static 'django_ambient/base.css' %}">
     <style>
-      .ambient-queries li {
+      .ambient-queries li,
+      .ambient-cache-calls li {
         padding: 0.2rem;
       }
-      .ambient-queries li:hover {
+      .ambient-queries li:hover,
+      .ambient-cache-calls li:hover {
         background: #C0FE03;
       }
-      .ambient-queries .ambient-stack summary {
+      .ambient-queries .ambient-stack summary,
+      .ambient-cache-calls .ambient-stack summary {
         cursor: pointer;
       }
       .ambient-tabs {
@@ -38,6 +41,10 @@
       }
       .ambient-panel.is-active {
         display: block;
+      }
+      .ambient-cache-key {
+        font-family: monospace;
+        white-space: pre-wrap;
       }
     </style>
   </head>
@@ -96,30 +103,21 @@
         <p>Cache hits: {{ cache_hits }}</p>
         <p>Cache misses: {{ cache_misses }}</p>
         {% if cache_calls %}
-          <table>
-            <thead>
-              <tr>
-                <th>Op</th>
-                <th>Backend</th>
-                <th>Key</th>
-                <th>Hits</th>
-                <th>Misses</th>
-                <th>Time</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for call in cache_calls %}
-                <tr>
-                  <td>{{ call.op }}</td>
-                  <td>{{ call.backend }}</td>
-                  <td>{{ call.key }}</td>
-                  <td>{{ call.hits }}</td>
-                  <td>{{ call.misses }}</td>
-                  <td>{{ call.duration_ms|floatformat:2 }} ms</td>
-                </tr>
-              {% endfor %}
-            </tbody>
-          </table>
+          <ol class="ambient-cache-calls">
+            {% for call in cache_calls %}
+              <li>
+                <div><strong>{{ call.duration_ms|floatformat:2 }} ms</strong></div>
+                <div><strong>{{ call.op }}</strong></div>
+                <pre class="ambient-cache-key">{{ call.key }}</pre>
+                {% if call.has_trace %}
+                  <details class="ambient-stack" data-stack-url="{% url 'ambient-cache-stack' request_id call.index %}">
+                    <summary>Stack trace</summary>
+                    <div class="ambient-stack-body">Hover or click to load.</div>
+                  </details>
+                {% endif %}
+              </li>
+            {% endfor %}
+          </ol>
         {% else %}
           <p>No cache activity recorded for this request.</p>
         {% endif %}

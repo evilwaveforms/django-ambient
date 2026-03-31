@@ -11,4 +11,9 @@ urlpatterns = [
         views.query_stack_trace,
         name="ambient-query-stack",
     ),
+    path(
+        "requests/<int:request_id>/cache/<int:call_index>/stack/",
+        views.cache_call_stack_trace,
+        name="ambient-cache-stack",
+    ),
 ]
