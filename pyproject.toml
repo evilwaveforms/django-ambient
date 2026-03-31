@@ -11,14 +11,15 @@ dependencies = [
     "django>=6.0.3",
 ]
 
-[tool.maturin]
-module-name = "django_ambient._core"
-python-packages = ["django_ambient"]
-python-source = "src"
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
 
 [tool.uv]
-cache-keys = [{ file = "pyproject.toml" }, { file = "src/**/*.rs" }, { file = "Cargo.toml" }, { file = "Cargo.lock" }]
+cache-keys = [{ file = "pyproject.toml" }, { file = "src/**/*.py" }]
 
 [build-system]
-requires = ["maturin>=1.0,<2.0"]
-build-backend = "maturin"
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"

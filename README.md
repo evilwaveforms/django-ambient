@@ -2,5 +2,5 @@
 
 ```
 uv sync
-uv run maturin develop
+uv pip install -e .
 ```

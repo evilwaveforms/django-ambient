@@ -16,22 +16,59 @@
       .ambient-queries .ambient-stack summary {
         cursor: pointer;
       }
+      .ambient-tabs {
+        display: flex;
+        gap: 0;
+        margin: 1rem 0;
+        align-items: center;
+      }
+      .ambient-tab {
+        border: 1px solid #111;
+        background: #fff;
+        padding: 0.6rem 1.2rem;
+        cursor: pointer;
+        font: inherit;
+        font-size: 1.05rem;
+      }
+      .ambient-tab[aria-selected="true"] {
+        background: #C0FE03;
+      }
+      .ambient-panel {
+        display: none;
+      }
+      .ambient-panel.is-active {
+        display: block;
+      }
     </style>
   </head>
   <body>
     <main>
       <header>
-        <h1>Request {{ request_id }}</h1>
-        <p>Method: {{ method }}</p>
-        <p>Status: {{ status }}</p>
-        <p>Path: {{ path }}</p>
-        <p>Started: {{ started_at }}</p>
+        <p>
+          Method: {{ method }} |
+          Status: {{ status }} |
+          Path: {{ path }} |
+          Started: {{ started_at }} |
+          Duration: {{ duration_ms|floatformat:2 }} ms |
+          CPU: {{ cpu_ms|floatformat:2 }} ms
+        </p>
         <p><a href="{% url 'ambient-index' %}">Back to dashboard</a></p>
       </header>
 
-      {% if queries %}
-        <section>
-          <h2>Queries</h2>
+      <nav class="ambient-tabs" role="tablist">
+        <button class="ambient-tab" type="button" role="tab" aria-selected="true" data-tab="sql">
+          SQL
+        </button>
+        <button class="ambient-tab" type="button" role="tab" aria-selected="false" data-tab="cache">
+          Cache
+        </button>
+        <button class="ambient-tab" type="button" role="tab" aria-selected="false" data-tab="template">
+          Template
+        </button>
+      </nav>
+
+      <section class="ambient-panel is-active" data-panel="sql" role="tabpanel">
+        {% if queries %}
           <ol class="ambient-queries">
             {% for item in queries %}
               <li>
@@ -49,12 +86,71 @@
               </li>
             {% endfor %}
           </ol>
-        </section>
-      {% else %}
-        <p>No queries recorded for this request.</p>
-      {% endif %}
+        {% else %}
+          <p>No queries recorded for this request.</p>
+        {% endif %}
+      </section>
+
+      <section class="ambient-panel" data-panel="cache" role="tabpanel">
+        <p>Cache time: {{ cache_ms|floatformat:2 }} ms</p>
+        <p>Cache hits: {{ cache_hits }}</p>
+        <p>Cache misses: {{ cache_misses }}</p>
+        {% if cache_calls %}
+          <table>
+            <thead>
+              <tr>
+                <th>Op</th>
+                <th>Backend</th>
+                <th>Key</th>
+                <th>Hits</th>
+                <th>Misses</th>
+                <th>Time</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for call in cache_calls %}
+                <tr>
+                  <td>{{ call.op }}</td>
+                  <td>{{ call.backend }}</td>
+                  <td>{{ call.key }}</td>
+                  <td>{{ call.hits }}</td>
+                  <td>{{ call.misses }}</td>
+                  <td>{{ call.duration_ms|floatformat:2 }} ms</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        {% else %}
+          <p>No cache activity recorded for this request.</p>
+        {% endif %}
+      </section>
+
+      <section class="ambient-panel" data-panel="template" role="tabpanel">
+        <p>Template render time: {{ template_ms|floatformat:2 }} ms</p>
+      </section>
     </main>
     <script>
+      (() => {
+        const tabs = document.querySelectorAll(".ambient-tab");
+        const panels = document.querySelectorAll(".ambient-panel");
+        if (!tabs.length || !panels.length) return;
+
+        const activate = (name) => {
+          tabs.forEach((tab) => {
+            const isActive = tab.dataset.tab === name;
+            tab.setAttribute("aria-selected", isActive ? "true" : "false");
+          });
+          panels.forEach((panel) => {
+            const isActive = panel.dataset.panel === name;
+            panel.classList.toggle("is-active", isActive);
+          });
+        };
+
+        tabs.forEach((tab) => {
+          tab.addEventListener("click", () => activate(tab.dataset.tab));
+        });
+      })();
+
       (() => {
         const hoverDelayMs = 100;
         const stacks = document.querySelectorAll(".ambient-stack");

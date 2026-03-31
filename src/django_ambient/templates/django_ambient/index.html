@@ -13,6 +13,18 @@
       #ambient-requests tbody tr[data-href]:hover {
         background: #C0FE03;
       }
+      #ambient-requests th,
+      #ambient-requests td {
+        padding: 0.35rem 0.75rem;
+        text-align: left;
+      }
+      @keyframes ambient-flash {
+        0% { background: #C0FE03; }
+        100% { background: transparent; }
+      }
+      #ambient-requests tbody tr.ambient-new {
+        animation: ambient-flash 1.6s ease-out;
+      }
     </style>
   </head>
   <body>
@@ -24,7 +36,7 @@
 
       <section>
         <h2>Requests</h2>
-        <table id="ambient-requests" data-events-url="{% url 'ambient-events' %}" data-max-requests="{{ max_requests }}">
+        <table id="ambient-requests" data-events-url="{% url 'ambient-events' %}" data-max-requests="{{ max_requests }}" data-last-id="{{ last_request_id }}">
           <thead>
             <tr>
               <th>Time</th>
@@ -32,22 +44,34 @@
               <th>Path</th>
               <th>Status</th>
               <th>Queries</th>
-              <th>Total</th>
+              <th>Query Total</th>
+              <th>Request</th>
+              <th>CPU</th>
+              <th>Template</th>
+              <th>Cache</th>
+              <th>Cache Hits</th>
+              <th>Cache Misses</th>
             </tr>
           </thead>
           <tbody>
-            {% for request_id, path, method, status, query_count, total_ms, started_at in requests %}
-              <tr data-href="{% url 'ambient-request-detail' request_id=request_id %}">
+            {% for request_id, path, method, status, query_count, total_ms, started_at, duration_ms, cpu_ms, template_ms, cache_hits, cache_misses, cache_ms in requests %}
+              <tr data-href="{% url 'ambient-request-detail' request_id=request_id %}" data-id="{{ request_id }}">
                 <td>{{ started_at }}</td>
                 <td>{{ method }}</td>
                 <td>{{ path }}</td>
                 <td>{{ status }}</td>
                 <td>{{ query_count }}</td>
                 <td>{{ total_ms|floatformat:2 }} ms</td>
+                <td>{{ duration_ms|floatformat:2 }} ms</td>
+                <td>{{ cpu_ms|floatformat:2 }} ms</td>
+                <td>{{ template_ms|floatformat:2 }} ms</td>
+                <td>{{ cache_ms|floatformat:2 }} ms</td>
+                <td>{{ cache_hits }}</td>
+                <td>{{ cache_misses }}</td>
               </tr>
             {% empty %}
               <tr>
-                <td colspan="6">No requests captured yet.</td>
+                <td colspan="12">No requests captured yet.</td>
               </tr>
             {% endfor %}
           </tbody>
@@ -73,12 +97,12 @@
         const emptyRow = () => {
           const row = document.createElement("tr");
           row.dataset.empty = "1";
-          const td = document.createElement("td");
-          td.colSpan = 6;
-          td.textContent = "No requests captured yet.";
-          row.appendChild(td);
-          return row;
-        };
+            const td = document.createElement("td");
+            td.colSpan = 12;
+            td.textContent = "No requests captured yet.";
+            row.appendChild(td);
+            return row;
+          };
 
         const buildRow = (item) => {
           const row = document.createElement("tr");
@@ -90,6 +114,12 @@
           row.appendChild(cell(String(item.status)));
           row.appendChild(cell(String(item.query_count)));
           row.appendChild(cell(`${Number(item.total_ms).toFixed(2)} ms`));
+          row.appendChild(cell(`${Number(item.duration_ms).toFixed(2)} ms`));
+          row.appendChild(cell(`${Number(item.cpu_ms).toFixed(2)} ms`));
+          row.appendChild(cell(`${Number(item.template_ms).toFixed(2)} ms`));
+          row.appendChild(cell(`${Number(item.cache_ms).toFixed(2)} ms`));
+          row.appendChild(cell(String(item.cache_hits)));
+          row.appendChild(cell(String(item.cache_misses)));
           return row;
         };
 
@@ -122,7 +152,12 @@
             if (tbody.querySelector(`tr[data-id="${item.id}"]`)) {
               return;
             }
-            frag.appendChild(buildRow(item));
+            const row = buildRow(item);
+            row.classList.add("ambient-new");
+            row.addEventListener("animationend", () => {
+              row.classList.remove("ambient-new");
+            }, { once: true });
+            frag.appendChild(row);
           });
           if (tbody.firstChild) {
             tbody.insertBefore(frag, tbody.firstChild);
@@ -154,7 +189,10 @@
           }
         });
 
-        const source = new EventSource(eventsUrl);
+        const lastId = Number(table.dataset.lastId) || 0;
+        const url = new URL(eventsUrl, window.location.origin);
+        url.searchParams.set("since", String(lastId));
+        const source = new EventSource(url.toString());
         source.addEventListener("snapshot", (event) => {
           renderRequests(JSON.parse(event.data));
         });

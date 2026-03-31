@@ -1,4 +1,5 @@
 import inspect
+import sys
 import linecache
 import os
 
@@ -15,25 +16,20 @@ def store_stack_trace(request_id: int, frames: list[tuple[str, int, str]]) -> No
 def evict_stack_traces(request_id: int) -> None:
     _stack_traces.pop(request_id, None)
 
-
 def capture_stack_frames(skip: int = 0, max_frames: int | None = None):
-    frame = inspect.currentframe()
-    for _ in range(skip + 1):
-        if frame is None:
-            return []
-        frame = frame.f_back
+  try:
+      frame = sys._getframe(skip + 1)
+  except (AttributeError, ValueError):
+      return []
 
-    result = []
-    depth = 0
-    while frame and (max_frames is None or depth < max_frames):
-        code = frame.f_code
-        filename = code.co_filename
-        lineno = frame.f_lineno
-        func = code.co_name
-        result.append((filename, lineno, func))
-        frame = frame.f_back
-        depth += 1
-    return result
+  result = []
+  depth = 0
+  while frame and (max_frames is None or depth < max_frames):
+      code = frame.f_code
+      result.append((code.co_filename, frame.f_lineno, code.co_name))
+      frame = frame.f_back
+      depth += 1
+  return result
 
 def get_stack_traces(request_id: int) -> list[list[tuple[str, int, str]]]:
     return list(_stack_traces.get(request_id, ()))

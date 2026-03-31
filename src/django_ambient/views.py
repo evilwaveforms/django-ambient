@@ -4,36 +4,90 @@ import time
 from django.http import Http404, StreamingHttpResponse
 from django.shortcuts import render
 
-from django_ambient import _core
+from django_ambient import _store
+from django_ambient.cache_calls import get_cache_calls
 from django_ambient.stack import get_stack_trace, render_stack_trace, get_stack_traces
 
 
 def index(request):
-    requests = _format_requests(_core.list_requests())
-    max_requests = _core.max_requests()
+    requests = _format_requests(_store.list_requests())
+    max_requests = _store.max_requests()
+    last_request_id = requests[0][0] if requests else 0
     return render(
         request,
         "django_ambient/index.html",
         {
             "requests": requests,
             "max_requests": max_requests,
+            "last_request_id": last_request_id,
         },
     )
 
 
+def _normalize_request_detail(
+    data: tuple,
+) -> tuple[str, str, int, list, float, float, float, float, int, int, float]:
+    if len(data) == 5:
+        path, method, status, queries, started_at = data
+        return path, method, status, queries, started_at, 0.0, 0.0, 0.0, 0, 0, 0.0
+    if len(data) == 7:
+        path, method, status, queries, started_at, duration_ms, cpu_ms = data
+        return path, method, status, queries, started_at, duration_ms, cpu_ms, 0.0, 0, 0, 0.0
+    if len(data) == 9:
+        (
+            path,
+            method,
+            status,
+            queries,
+            started_at,
+            duration_ms,
+            cpu_ms,
+            template_ms,
+            cache_stats,
+        ) = data
+        cache_hits, cache_misses, cache_ms = cache_stats
+        return (
+            path,
+            method,
+            status,
+            queries,
+            started_at,
+            duration_ms,
+            cpu_ms,
+            template_ms,
+            cache_hits,
+            cache_misses,
+            cache_ms,
+        )
+    raise ValueError(f"Unexpected request detail tuple length: {len(data)}")
+
+
 def request_detail(request, request_id: int):
-    data = _core.get_request(request_id)
+    data = _store.get_request(request_id)
     if data is None:
         raise Http404("Request not found")
-    path, method, status, queries, started_at = data
+    (
+        path,
+        method,
+        status,
+        queries,
+        started_at,
+        duration_ms,
+        cpu_ms,
+        template_ms,
+        cache_hits,
+        cache_misses,
+        cache_ms,
+    ) = _normalize_request_detail(data)
+    cache_calls = _format_cache_calls(get_cache_calls(request_id))
     trace_count = len(get_stack_traces(request_id))
     queries_with_traces = []
-    for idx, (sql, duplicates, duration_ms) in enumerate(queries):
+    for idx, (sql, duplicates, query_duration_ms) in enumerate(queries):
         queries_with_traces.append(
             {
                 "sql": sql,
                 "duplicates": duplicates,
-                "duration_ms": duration_ms,
+                "duration_ms": query_duration_ms,
                 "index": idx,
                 "has_trace": idx < trace_count,
             }
@@ -48,11 +102,19 @@ def request_detail(request, request_id: int):
             "status": status,
             "queries": queries_with_traces,
             "started_at": _format_timestamp(started_at),
+            "duration_ms": duration_ms,
+            "cpu_ms": cpu_ms,
+            "template_ms": template_ms,
+            "cache_hits": cache_hits,
+            "cache_misses": cache_misses,
+            "cache_ms": cache_ms,
+            "cache_calls": cache_calls,
         },
     )
 
+
 def query_stack_trace(request, request_id: int, query_index: int):
-    data = _core.get_request(request_id)
+    data = _store.get_request(request_id)
     if not data:
         raise Http404("Request not found")
     trace = get_stack_trace(request_id, query_index)
@@ -67,7 +129,7 @@ def query_stack_trace(request, request_id: int, query_index: int):
 
 
 def _serialize_requests(
-    items: list[tuple[int, str, str, int, int, float, str]],
+    items: list[tuple],
 ) -> list[dict[str, object]]:
     return [
         {
@@ -77,40 +139,51 @@ def _serialize_requests(
             "status": status,
             "query_count": query_count,
             "total_ms": total_ms,
-            "started_at": started_at,
+            "started_at": _format_timestamp(started_at),
+            "duration_ms": duration_ms,
+            "cpu_ms": cpu_ms,
+            "template_ms": template_ms,
+            "cache_hits": cache_hits,
+            "cache_misses": cache_misses,
+            "cache_ms": cache_ms,
         }
-        for req_id, path, method, status, query_count, total_ms, started_at in items
+        for (
+            req_id,
+            path,
+            method,
+            status,
+            query_count,
+            total_ms,
+            started_at,
+            duration_ms,
+            cpu_ms,
+            template_ms,
+            cache_hits,
+            cache_misses,
+            cache_ms,
+        ) in _normalize_requests(items)
     ]
 
 
 def events(request):
     def event_stream():
-        last_ids: set[int] | None = None
+        since = request.GET.get("since")
+        try:
+            last_id = int(since) if since is not None else 0
+        except ValueError:
+            last_id = 0
         while True:
-            requests = _format_requests(_core.list_requests())
-            current_ids = {req_id for req_id, *_ in requests}
-
-            if last_ids is None:
-                payload = json.dumps(_serialize_requests(requests))
-                yield f"event: snapshot\ndata: {payload}\n\n"
-                last_ids = current_ids
-                time.sleep(1)
-                continue
-            if current_ids == last_ids:
-                time.sleep(1)
-                continue
-
-            added_ids = current_ids - last_ids
-            removed_ids = last_ids - current_ids
-            if added_ids:
-                new_requests = [req for req in requests if req[0] in added_ids]
+            new_requests = _store.list_requests_since(last_id)
+            if new_requests:
                 payload = json.dumps(_serialize_requests(new_requests))
                 yield f"event: append\ndata: {payload}\n\n"
-            if removed_ids:
-                payload = json.dumps(sorted(removed_ids))
+                last_id = new_requests[0][0]
+            evicted_ids = _store.drain_evicted_ids()
+            if evicted_ids:
+                payload = json.dumps(evicted_ids)
                 yield f"event: remove\ndata: {payload}\n\n"
-            last_ids = current_ids
             time.sleep(1)
+
     response = StreamingHttpResponse(event_stream(), content_type="text/event-stream")
     response["Cache-Control"] = "no-cache"
     response["X-Accel-Buffering"] = "no"
@@ -123,8 +196,8 @@ def _format_timestamp(value: float) -> str:
 
 
 def _format_requests(
-    items: list[tuple[int, str, str, int, int, float, float]],
-) -> list[tuple[int, str, str, int, int, float, str]]:
+    items: list[tuple],
+) -> list[tuple[int, str, str, int, int, float, str, float, float, float, int, int, float]]:
     return [
         (
             req_id,
@@ -134,6 +207,132 @@ def _format_requests(
             query_count,
             total_ms,
             _format_timestamp(started_at),
+            duration_ms,
+            cpu_ms,
+            template_ms,
+            cache_hits,
+            cache_misses,
+            cache_ms,
         )
-        for req_id, path, method, status, query_count, total_ms, started_at in items
+        for (
+            req_id,
+            path,
+            method,
+            status,
+            query_count,
+            total_ms,
+            started_at,
+            duration_ms,
+            cpu_ms,
+            template_ms,
+            cache_hits,
+            cache_misses,
+            cache_ms,
+        ) in _normalize_requests(items)
     ]
+
+
+def _normalize_requests(
+    items: list[tuple],
+) -> list[tuple[int, str, str, int, int, float, float, float, float, float, int, int, float]]:
+    return [
+        _normalize_request_tuple(item)
+        for item in items
+    ]
+
+
+def _normalize_request_tuple(
+    item: tuple,
+) -> tuple[int, str, str, int, int, float, float, float, float, float, int, int, float]:
+    if len(item) == 7:
+        req_id, path, method, status, query_count, total_ms, started_at = item
+        return (
+            req_id,
+            path,
+            method,
+            status,
+            query_count,
+            total_ms,
+            started_at,
+            0.0,
+            0.0,
+            0.0,
+            0,
+            0,
+            0.0,
+        )
+    if len(item) == 9:
+        req_id, path, method, status, query_count, total_ms, started_at, duration_ms, cpu_ms = item
+        return (
+            req_id,
+            path,
+            method,
+            status,
+            query_count,
+            total_ms,
+            started_at,
+            duration_ms,
+            cpu_ms,
+            0.0,
+            0,
+            0,
+            0.0,
+        )
+    if len(item) == 11:
+        (
+            req_id,
+            path,
+            method,
+            status,
+            query_count,
+            total_ms,
+            started_at,
+            duration_ms,
+            cpu_ms,
+            template_ms,
+            cache_stats,
+        ) = item
+        cache_hits, cache_misses, cache_ms = cache_stats
+        return (
+            req_id,
+            path,
+            method,
+            status,
+            query_count,
+            total_ms,
+            started_at,
+            duration_ms,
+            cpu_ms,
+            template_ms,
+            cache_hits,
+            cache_misses,
+            cache_ms,
+        )
+    raise ValueError(f"Unexpected request tuple length: {len(item)}")
+
+
+def _format_cache_calls(
+    calls: list[tuple[str, str, object, int | None, int | None, float]],
+) -> list[dict[str, object]]:
+    formatted = []
+    for op, backend, key, hits, misses, duration_ms in calls:
+        formatted.append(
+            {
+                "op": op,
+                "backend": backend,
+                "key": _format_cache_key(key),
+                "hits": hits,
+                "misses": misses,
+                "duration_ms": duration_ms,
+            }
+        )
+    return formatted
+
+
+def _format_cache_key(value: object) -> str:
+    if isinstance(value, (list, tuple)):
+        parts = [str(item) for item in value[:5]]
+        if len(value) > 5:
+            parts.append("…")
+        return ", ".join(parts)
+    return str(value)
