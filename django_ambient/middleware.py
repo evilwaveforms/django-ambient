@@ -1,5 +1,6 @@
+from contextlib import ExitStack
 import time
-from django.db import connection
+from django.db import connections
 from django.urls import NoReverseMatch, reverse
 from django_ambient._store import start_profile, record_queries
 from django_ambient.cache_calls import evict_cache_calls, store_cache_calls
@@ -50,13 +51,17 @@ def ambient_middleware(get_response):
                 return execute(sql, params, many, context_)
             finally:
                 dt_ms = (time.perf_counter() - t0) * 1000.0
+                connection_obj = context_.get("connection")
+                using = getattr(connection_obj, "alias", "default")
 
                 frames = capture_stack_frames(skip=1, max_frames=30)
                 store_stack_trace(request_id, frames)
-                store_sql_params(request_id, params, many)
+                store_sql_params(request_id, using, params, many)
                 collected_queries.append((sql, 0, dt_ms))
 
-        with connection.execute_wrapper(wrapper):
+        with ExitStack() as stack:
+            for conn in connections.all():
+                stack.enter_context(conn.execute_wrapper(wrapper))
             response = get_response(request)
 
         duration_ms = (time.perf_counter() - wall_start) * 1000.0

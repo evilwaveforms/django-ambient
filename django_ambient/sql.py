@@ -1,11 +1,11 @@
 from django.db import connections
 from typing import Any
 
-_sql_params: dict[int, list[tuple[Any, bool]]] = {}
+_sql_params: dict[int, list[tuple[str, Any, bool]]] = {}
 
-def store_sql_params(request_id: int, params: Any, many: bool) -> None:
+def store_sql_params(request_id: int, using: str, params: Any, many: bool) -> None:
     items = _sql_params.setdefault(request_id, [])
-    items.append((params, many))
+    items.append((using, params, many))
 
 def evict_sql_params(request_id: int) -> None:
     _sql_params.pop(request_id, None)
@@ -41,11 +41,11 @@ def _render_sql(sql: str, row_params: list[object], using: str = "default") -> s
     finally:
         cursor.close()
 
-def format_sql_for_request(request_id: int, sql_list: list[str], using: str = "default") -> list[str]:
+def format_sql_for_request(request_id: int, sql_list: list[str]) -> list[str]:
     items = list(_sql_params.get(request_id, ()))
     result: list[str] = []
 
-    for sql, (params, many) in zip(sql_list, items):
+    for sql, (using, params, many) in zip(sql_list, items):
         rows = _normalize_rows(params, many)
         first_row = rows[0] if rows else []
         full_sql = _render_sql(sql, first_row, using=using)
