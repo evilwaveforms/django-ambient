@@ -22,3 +22,4 @@ target
 
 *.pyc
 *.so
+*.egg-info/
